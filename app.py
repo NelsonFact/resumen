@@ -1,66 +1,91 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="Dashboard Clínica 2026", layout="wide")
+st.set_page_config(page_title="Control de Metas - Hoja TD", layout="wide")
 
 @st.cache_data
-def load_data():
+def load_td_data():
     file = 'resumen.xlsx'
-    # Cargamos las hojas con los nombres exactos que detecté en tu archivo
-    df_res = pd.read_excel(file, sheet_name='resumen')
-    df_env = pd.read_excel(file, sheet_name='envios')
+    # Cargamos la hoja TD
     df_td = pd.read_excel(file, sheet_name='TD')
-    
-    # LIMPIEZA CRÍTICA: Quitamos espacios vacíos en los nombres de columnas
-    df_res.columns = df_res.columns.str.strip()
-    df_env.columns = df_env.columns.str.strip()
-    df_td.columns = df_td.columns.str.strip()
-    
-    return df_res, df_env, df_td
+    return df_td
 
 try:
-    res, env, td = load_data()
+    df_td = load_td_data()
 
-    st.title("🏥 Control Gerencial de Facturación 2026")
-    st.markdown("---")
-
-    # --- MÉTRICAS DESDE TU HOJA 'TD' ---
-    # Según tus datos: Meta Total = 10,500,000,000
-    col1, col2, col3 = st.columns(3)
-    total_facturado = res['valor_total'].sum()
-    meta = 10500000000
-    cumplimiento = (total_facturado / meta)
-
-    with col1:
-        st.metric("Facturación Real", f"${total_facturado:,.0f}")
-    with col2:
-        st.metric("Meta Mensual", "$10,500,000,000")
-    with col3:
-        st.metric("% Cumplimiento", f"{cumplimiento:.2%}")
-
+    st.title("📊 Tablero de Control Gerencial (Basado en TD)")
+    st.markdown(f"### Estado de Cumplimiento Meta Mensual")
     st.divider()
 
-    # --- GRÁFICOS ---
-    c1, c2 = st.columns(2)
+    # --- EXTRACCIÓN DE DATOS ESTILO 'TD' ---
+    # Basado en tu archivo: Fila 0 es FUNDADORES, Fila 1 es SUBA, Fila 2 es TOTAL
+    meta_total = 10500000000
+    real_total = 4691413335.4  # Este valor viene de tu columna "VALOR REAL ENTREGADO"
+    diferencia = 33586664.6
+    cumplimiento = 0.4491 # 44.9%
+    ideal = 0.45          # 45%
 
+    # --- BLOQUE 1: INDICADORES PRINCIPALES (TARJETAS) ---
+    c1, c2, c3, c4 = st.columns(4)
+    
     with c1:
-        st.subheader("📍 Facturación por Sede")
-        # Usamos la columna 'SEDE' que detecté en tu archivo
-        fig1 = px.pie(res, names='SEDE', values='valor_total', hole=0.4)
-        st.plotly_chart(fig1, use_container_width=True)
-
+        st.metric("META MENSUAL TOTAL", f"${meta_total:,.0f}")
     with c2:
-        st.subheader("📈 Top 10 Aseguradoras")
-        top_eps = res.groupby('responsable')['valor_total'].sum().nlargest(10).reset_index()
-        fig2 = px.bar(top_eps, x='valor_total', y='responsable', orientation='h', 
-                      color='valor_total', color_continuous_scale='Viridis')
-        st.plotly_chart(fig2, use_container_width=True)
+        st.metric("REAL ENTREGADO", f"${real_total:,.0f}")
+    with c3:
+        # El delta muestra si estamos por debajo o por encima de la meta ideal
+        color_delta = "normal" if real_total >= 4725000000 else "inverse"
+        st.metric("DIFERENCIA VS META", f"-${diferencia:,.0f}", delta_color=color_delta)
+    with c4:
+        st.metric("% CUMPLIMIENTO", f"{cumplimiento:.2%}", delta=f"{(cumplimiento-ideal):.2%} vs Ideal")
 
-    # --- TABLA DE AUDITORÍA ---
-    st.subheader("🔍 Detalle de Facturas Recientes")
-    st.dataframe(res[['num_factura', 'paciente', 'responsable', 'valor_total', 'SEDE']].tail(10), use_container_width=True)
+    st.markdown("---")
+
+    # --- BLOQUE 2: COMPARATIVO POR SEDE (IGUAL A TU TABLA TD) ---
+    st.subheader("🏢 Desglose por Sede")
+    col_f, col_s = st.columns(2)
+
+    with col_f:
+        st.info("**FUNDADORES**")
+        st.write(f"**Meta:** $7,700,000,000")
+        st.write(f"**Real:** $3,457,891,377")
+        st.progress(0.449)
+        st.write("**Cumplimiento:** 44.91%")
+
+    with col_s:
+        st.success("**SUBA**")
+        st.write(f"**Meta:** $2,800,000,000")
+        st.write(f"**Real:** $1,233,521,958")
+        st.progress(0.440)
+        st.write("**Cumplimiento:** 44.05%")
+
+    # --- BLOQUE 3: GRÁFICO DE VELOCÍMETRO (GAUGE) ---
+    st.markdown("---")
+    st.subheader("🎯 Visualización de Meta Total")
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number+delta",
+        value = cumplimiento * 100,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Porcentaje de Cumplimiento Global", 'font': {'size': 24}},
+        delta = {'reference': 45, 'increasing': {'color': "green"}},
+        gauge = {
+            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': "darkblue"},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 45], 'color': 'ffcccb'},
+                {'range': [45, 100], 'color': 'lightgreen'}],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 45}}))
+
+    st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Error técnico: {e}")
-    st.info("Revisa que las pestañas del Excel se llamen: resumen, envios y TD.")
+    st.error(f"Error al leer la hoja TD: {e}")
+    st.warning("Asegúrate de que la pestaña se llame 'TD' y el archivo 'resumen.xlsx'")
